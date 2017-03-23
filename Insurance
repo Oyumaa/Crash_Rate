@@ -1,0 +1,746 @@
+%let PATH = /folders/myfolders/Unit002;
+%let NAME = MYDATA;
+%let LIB = &NAME..;
+libname &NAME. "&PATH.";
+%let INFILE 	= &LIB.logit_insurance;
+%let TEMPFILE 	= insurance;
+data &TEMPFILE.;
+set &INFILE.;
+run;
+proc contents data=&TEMPFILE.;
+run;
+proc print data=&TEMPFILE. (obs=10);
+run;
+proc freq data=&TEMPFILE.;
+table _character_ ;
+run;
+proc means data=&TEMPFILE. n nmiss median mean min max maxdec=2;
+var _numeric_;
+run;
+proc means data=&TEMPFILE. p95 maxdec=2;
+var BLUEBOOK INCOME AGE;
+run;
+*******************************************************
+CREATE MACRO TO IMPUTE MISSING VALUES
+*******************************************************;
+
+%macro impute(infile,outfile);
+data &OUTFILE.;
+set &INFILE.;
+IMP_INCOME = INCOME;
+M_INCOME=0;
+if missing(INCOME) then do;
+			M_INCOME=1;
+			if JOB ="Clerical" OR
+			   JOB="Home Maker" OR
+			   JOB="Student" then do;			   
+			   	 if HOME_VAL<50223 then imp_income=14899.42 ;
+			   	 else if HOME_VAL>=50223 and HOME_VAL<=115249 then imp_income=7782.99;
+				 else if HOME_VAL>=115250 and HOME_VAL<=158296 then imp_income=23985.93;
+				 else if HOME_VAL>=158296 then imp_income=45126.23; 
+			 end;
+			 if missing(JOB) or
+	   			JOB ="Doctor" or
+	   			JOB ="Manager" or 
+	   			JOB ="Professional" or
+	   			JOB ="Lawyer" or
+	   			JOB ="z_Blue Collar" then do;
+	   			 if HOME_VAL<326554 then imp_income=70259.04;
+		  		 else if HOME_VAL>=326555 THEN DO;
+		  		 	 if EDUCATION = "<High School" or
+		    			EDUCATION = "Bachelors" or
+		   				EDUCATION = "Masters" or 
+		  				EDUCATION = "z_High School" then imp_income=137728.11;
+		   				else if EDUCATION = "PhD" then imp_income=177295.08;
+		   		 end;
+	end;
+end;
+IMP_HOME_VAL = HOME_VAL;
+M_HOME_VAL=0;
+if missing(HOME_VAL) then do;
+	M_HOME_VAL=1;
+	if MSTATUS="z_No" then do;
+		if JOB="Student" then IMP_HOME_VAL=7517.06;
+		else if JOB="z_Blue Collar" then IMP_HOME_VAL=83479.26;
+		else if JOB="Lawyer" or 
+				JOB="Manager" or
+				JOB="Professional" then IMP_HOME_VAL=104809.16;
+		else if JOB="Doctor" or
+				missing(JOB) then IMP_HOME_VAL=125439;
+		else if JOB="Clerical" or
+				JOB="Home Maker" then do;
+				if Education= "<High School" or
+				   Education ="Masters" or
+				   Education = "z_High School" then IMP_HOME_VAL=46379.62;
+				   else if Education="Bachelors" or
+				   		   Education="PhD" then IMP_HOME_VAL=72124.75;
+				end;
+		end;
+	if MSTATUS="Yes" then do;
+		if JOB="Student" then IMP_HOME_VAL=20412.6;
+		else if JOB="Home Maker" then IMP_HOME_VAL=112200.28;
+		else if JOB="Clerical" then do;
+		   if EDUCATION="<High School" then IMP_HOME_VAL=137643.28;
+		   else if EDUCATION="z_High School" then IMP_HOME_VAL=157151.40;
+		   else if EDUCATION="Bachelors" then IMP_HOME_VAL=187661.37;
+		   end;
+		 else if missing(JOB) or
+		 	JOB="Doctor" or
+		 	JOB="Lawyer" or 
+		 	JOB="Manager" or
+		 	JOB="Professional" or
+		 	JOB="z_Blue Collar" then do;
+		 		if EDUCATION="<High School" then IMP_HOME_VAL=174191.71;
+		 		else if EDUCATION="z_High School" then IMP_HOME_VAL=203334.84;
+		 		else if EDUCATION="Bachelors" then IMP_HOME_VAL=246369.31;
+		 		else if EDUCATION="Masters" then IMP_HOME_VAL=267550.21;
+		 		else if EDUCATION="PhD" then IMP_HOME_VAL=364932.95;
+		 		end;
+			end;
+end;
+IMP_JOB=JOB;
+M_JOB=0;
+if missing(JOB) then do;
+	M_JOB=1;
+	if EDUCATION="<High School" or
+	   EDUCATION="Bachelors" or
+	   EDUCATION="z_High School" then do;
+	   if INCOME<42768.19 then IMP_JOB="Clerical";
+	   else if INCOME>=42768.19 then IMP_JOB="z_Blue Collar";
+	 end;
+	if EDUCATION="Masters" or 
+	   EDUCATION="PhD" then do;
+	   if CAR_USE="Commercial" then IMP_JOB="Manager";
+	   	else if CAR_USE="Private" then do;
+	   	  if EDUCATION="Masters" then IMP_JOB="Lawyer";
+	   	  else if EDUCATION="PhD" then IMP_JOB="Doctor";
+	   	end;
+	 end;
+end;
+IMP_CAR_AGE=CAR_AGE;
+if missing(car_age)then do;
+	if EDUCATION="<High School" then IMP_CAR_AGE=3.48;
+	else if EDUCATION="z_High School" then IMP_CAR_AGE=4.57;
+	else if EDUCATION="Bachelors" then IMP_CAR_AGE=8.86;
+	else if EDUCATION="Masters" OR
+			EDUCATION="PhD" then IMP_CAR_AGE=14.01;
+end;
+IMP_YOJ=YOJ;
+M_YOJ=0;
+if missing(YOJ) then do;
+	M_YOJ=1;
+	if JOB="Home Maker" or 
+	   JOB="Student" then do;
+	   if INCOME<6929.74 then do;
+	   		if JOB="Home Maker" then IMP_YOJ=2.64;
+	   		else if JOB="Student" then IMP_YOJ=4.11;
+	   	end;
+	   else if INCOME>=6929.74 then do; 
+	   	 if HOMEKIDS<=1 then IMP_YOJ=10.79;
+	   	 else if HOMEKIDS>=2 then IMP_YOJ=12.72;
+	   end;
+	  end;
+	 if missing(JOB) or
+	 	JOB="Clerical" or
+	 	JOB="Doctor" or
+	 	JOB="Lawyer" or
+	 	JOB="Manager" or
+	 	JOB="Professional" or
+	 	JOB="z_Blue Collar" then do;
+	 	if HOMEKIDS<=1 then IMP_YOJ=11.05;
+	 	else if HOMEKIDS=2 then IMP_YOJ=12.27;
+	 	else if HOMEKIDS=3 then IMP_YOJ=12.85;
+	 	else if HOMEKIDS>=4 then IMP_YOJ=13.72;
+	 end;
+end;
+IF IMP_CAR_AGE<0 then IMP_CAR_AGE=-1*IMP_CAR_AGE;
+IMP_AGE=AGE;
+M_AGE=0;
+if missing(AGE) then do;
+	M_AGE=1;
+ 	if HOMEKIDS=0 then IMP_AGE=47.94;
+    else if missing(AGE) and HOMEKIDS>0 then IMP_AGE=38.98;
+   end;
+run;
+%mend;
+****************************************************************
+CREATE MACRO TO TRANSFORM CONT VARIABLES TO CATEGORICAL
+****************************************************************;
+
+%macro trans_1(infile,outfile);
+data &OUTFILE.;
+set &INFILE.;
+if IMP_HOME_VAL=0 then C_HOME_VAL="Renter";
+else if IMP_HOME_VAL>0 then C_HOME_VAL="Homeowner";
+if HOMEKIDS=0 then C_HOMEKIDS="No Kids";
+else if 1<=HOMEKIDS<=3 then C_HOMEKIDS="Less than 3";
+else if HOMEKIDS>3 then C_HOMEKIDS="More than 4";
+if OLDCLAIM=0 then C_OLDCLAIM="No Claim";
+else if 0<OLDCLAIM<20000 then C_OLDCLAIM="Less than 20000";
+else if OLDCLAIM>20000 then C_OLDCLAIM="More than 20000";
+If BLUEBOOK>31110 then C_BLUEBOOK=31110;
+else C_BLUEBOOK=BLUEBOOK;
+if IMP_INCOME>152283.24 then C_INCOME=152283.24;
+else C_INCOME=IMP_INCOME;
+if IMP_AGE>59 then C_AGE=59;
+else C_AGE=IMP_AGE;
+DROP AGE INCOME HOME_VAL JOB YOJ CAR_AGE BLUEBOOK IMP_AGE IMP_INCOME;
+run;
+%mend;
+
+*************************************************************
+IMPUTE MISSING DATA AND TRANSFORM VARIABLES
+*************************************************************;
+%let IMPUTED=insurance_data;
+%impute(&TEMPFILE.,&IMPUTED.);
+%let TRANS_1=transformed_1;
+%trans_1(&IMPUTED.,&TRANS_1.);
+
+proc means data=&TRANS_1. nmiss min max mean maxdec=2;
+class TARGET_FLAG;
+run;
+proc freq data=&Trans_1.;
+table (_character_)*TARGET_FLAG;
+run;
+*************************************************************************
+MODEL 1
+*************************************************************************;
+proc logistic data=&TRANS_1 plots=all;
+CLASS PARENT1
+      MSTATUS
+      SEX
+	  EDUCATION
+	  CAR_USE
+	  CAR_TYPE
+	  REVOKED
+	  URBANICITY
+	  IMP_JOB
+	  C_HOME_VAL
+	  C_HOMEKIDS
+	  C_OLDCLAIM/param=ref;
+model TARGET_FLAG( ref="0" ) =PARENT1
+						      MSTATUS
+						      SEX
+							  EDUCATION
+							  CAR_USE
+							  CAR_TYPE
+							  REVOKED
+							  URBANICITY
+							  IMP_JOB
+							  C_HOME_VAL
+							  C_HOMEKIDS
+							  C_OLDCLAIM
+							  KIDSDRIV
+							  TRAVTIME
+							  TIF
+							  CLM_FREQ
+							  MVR_PTS
+							  M_INCOME
+							  M_HOME_VAL
+							  M_JOB
+							  IMP_CAR_AGE
+							  IMP_YOJ
+							  M_YOJ
+							  M_AGE
+							  C_BLUEBOOK
+							  C_INCOME
+							  C_AGE/selection=stepwise;
+output out = model_set(keep=TARGET_FLAG
+							PARENT1
+						    MSTATUS
+						    SEX
+							EDUCATION
+							CAR_USE
+							CAR_TYPE
+							REVOKED
+							URBANICITY
+							IMP_JOB
+							C_HOME_VAL
+							C_HOMEKIDS
+							C_OLDCLAIM
+							KIDSDRIV
+							TRAVTIME
+							TIF
+							CLM_FREQ
+							MVR_PTS
+							M_INCOME
+							M_HOME_VAL
+							M_JOB
+							IMP_CAR_AGE
+							IMP_YOJ
+							M_YOJ
+							M_AGE
+							C_BLUEBOOK
+							C_INCOME
+							C_AGE
+							INDEX 
+							res lev dev err pred)
+					h=lev stdxbeta=err resdev=res predicted=pred difdev=dev;
+run;
+%macro score_1(INFILE,OUTFILE);
+data &OUTFILE.;
+set &INFILE.;
+YHAT=-1.4705
+	 -0.6241*(MSTATUS in("Yes"))
+	 -0.0267*(EDUCATION in("<High School"))
+	 -0.3743*(EDUCATION in("Bachelors"))
+	 -0.2600*(EDUCATION in("Masters"))
+	 -0.1467*(EDUCATION in("PhD"))
+	 +0.7764*(CAR_USE in("Commercial"))
+	 -0.6869*(CAR_TYPE in("Minivan"))
+	 -0.0559*(CAR_TYPE in("Panel Truck"))
+	 -0.1374*(CAR_TYPE in("Pickup"))
+	 +0.2690*(CAR_TYPE in("Sports Car"))
+	 -0.0110*(CAR_TYPE in("Van"))
+	 -0.9649*(REVOKED in("No"))
+	 +2.3506*(URBANICITY in("Highly Urban/Urban"))
+	 +0.0507*(IMP_JOB in("Clerical"))
+	 -0.7214*(IMP_JOB in("Doctor"))
+	 -0.1024*(IMP_JOB in("Home Maker"))
+	 -0.2096*(IMP_JOB in("Lawyer"))
+	 -0.8504*(IMP_JOB in("Manager"))
+	 -0.1379*(IMP_JOB in("Professional"))
+	 -0.2542*(IMP_JOB in("Student"))
+	 -0.3357*(C_HOME_VAL in("Homeowner"))
+	 +0.3580*(C_HOMEKIDS in("Less then 3"))
+	 +0.2054*(C_HOMEKIDS in("More than 4"))
+	 +0.5170*(C_OLDCLAIM in("Less than 20000"))
+	 -0.1186*(C_OLDCLAIM in("More than 20000"))
+	 +0.3562*KIDSDRIV
+	 +0.0146*TRAVTIME
+	 -0.0555*TIF
+	 +0.0973*MVR_PTS
+	 +0.4648*M_JOB
+	 -0.00003*C_BLUEBOOK
+	 -6.54E-6*C_INCOME;
+if YHAT > 999  then YHAT = 999;
+if YHAT < -999 then YHAT = -999;
+P_TARGET_FLAG = exp( YHAT ) / ( 1+exp( YHAT ));
+run;
+%mend;
+
+data test_1;
+set &TRANS_1.;
+u=uniform(123);
+if(u<0.30) then test=1;
+else test=0;
+if (test)=1 then test_response=TARGET_FLAG;
+else test_response=.;
+if(test) then valid_response=TARGET_FLAG;
+else test_response=.;
+run;
+%score_1(test_1,test_score);
+data test_score;
+set test_score;
+if P_TARGET_FLAG<=0.15 then test_response=0;
+else test_response=1;
+if test_response=. then delete;
+if valid_response=. then delete;
+Length ops_validation $7.;
+pred_diff=test_response-valid_response;
+if pred_diff=0 then ops_validation='Good';
+else ops_validation='Bad';
+run;
+proc freq data=test_score;
+tables ops_validation/plots=freqplot;
+run;
+*********************************************************************
+REMOVE OUTLIERS
+*********************************************************************;
+data outliers_removed;
+set model_set;
+where dev<=4;
+run;
+*************************************************************************
+MODEL 2
+*************************************************************************;
+proc logistic data=outliers_removed plots=all;
+CLASS PARENT1
+      MSTATUS
+      SEX
+	  EDUCATION
+	  CAR_USE
+	  CAR_TYPE
+	  REVOKED
+	  URBANICITY
+	  IMP_JOB
+	  C_HOME_VAL
+	  C_HOMEKIDS
+	  C_OLDCLAIM/param=ref;
+model TARGET_FLAG( ref="0" ) =PARENT1
+						      MSTATUS
+						      SEX
+							  EDUCATION
+							  CAR_USE
+							  CAR_TYPE
+							  REVOKED
+							  URBANICITY
+							  IMP_JOB
+							  C_HOME_VAL
+							  C_HOMEKIDS
+							  C_OLDCLAIM
+							  KIDSDRIV
+							  TRAVTIME
+							  TIF
+							  CLM_FREQ
+							  MVR_PTS
+							  M_INCOME
+							  M_HOME_VAL
+							  M_JOB
+							  IMP_CAR_AGE
+							  IMP_YOJ
+							  M_YOJ
+							  M_AGE
+							  C_BLUEBOOK
+							  C_INCOME
+							  C_AGE/selection=stepwise;
+run;
+
+%macro score_2(INFILE,OUTFILE);
+data &OUTFILE.;
+set &INFILE.;
+YHAT=-2.2048
+	 -0.7157*(MSTATUS in("Yes"))
+	 +0.00935*(EDUCATION in("<High School"))
+	 -0.4575*(EDUCATION in("Bachelors"))
+	 -0.3925*(EDUCATION in("Masters"))
+	 -0.2446*(EDUCATION in("PhD"))
+	 +1.0641*(CAR_USE in("Commercial"))
+	 -0.9633*(CAR_TYPE in("Minivan"))
+	 -0.0163*(CAR_TYPE in("Panel Truck"))
+	 -0.1675*(CAR_TYPE in("Pickup"))
+	 +0.3656*(CAR_TYPE in("Sports Car"))
+	 +0.00760*(CAR_TYPE in("Van"))
+	 -1.2979*(REVOKED in("No"))
+	 +3.6146*(URBANICITY in("Highly Urban/Urban"))
+	 +0.1072*(IMP_JOB in("Clerical"))
+	 -1.0364*(IMP_JOB in("Doctor"))
+	 -0.1742*(IMP_JOB in("Home Maker"))
+	 -0.2182*(IMP_JOB in("Lawyer"))
+	 -1.2499*(IMP_JOB in("Manager"))
+	 -0.1466*(IMP_JOB in("Professional"))
+	 -0.5145*(IMP_JOB in("Student"))
+	 -0.4701*(C_HOME_VAL in("Homeowner"))
+	 +0.4314*(C_HOMEKIDS in("Less then 3"))
+	 +0.2860*(C_HOMEKIDS in("More than 4"))
+	 +0.6696*(C_OLDCLAIM in("Less than 20000"))
+	 -0.2595*(C_OLDCLAIM in("More than 20000"))
+	 +0.5263*KIDSDRIV
+	 +0.0193*TRAVTIME
+	 -0.0675*TIF
+	 +0.1212*MVR_PTS
+	 +0.8132*M_JOB
+	 -0.00004*C_BLUEBOOK
+	 -8.14E-6*C_INCOME;
+if YHAT > 999  then YHAT = 999;
+if YHAT < -999 then YHAT = -999;
+P_TARGET_FLAG = exp( YHAT ) / ( 1+exp( YHAT ));
+run;
+%mend;
+%score_2(test_1,test_score);
+data test_score;
+set test_score;
+if P_TARGET_FLAG<=0.15 then test_response=0;
+else test_response=1;
+if test_response=. then delete;
+if valid_response=. then delete;
+Length ops_validation $7.;
+pred_diff=test_response-valid_response;
+if pred_diff=0 then ops_validation='Good';
+else ops_validation='Bad';
+run;
+proc freq data=test_score;
+tables ops_validation/plots=freqplot;
+run;
+****************************************************************
+MODEL 3
+****************************************************************;
+proc logistic data=&TRANS_1. plots=all;
+CLASS PARENT1
+      MSTATUS
+      SEX
+	  EDUCATION
+	  CAR_USE
+	  CAR_TYPE
+	  REVOKED
+	  URBANICITY
+	  IMP_JOB
+	  C_HOMEKIDS
+	  C_HOME_VAL
+	  C_OLDCLAIM/param=ref;
+model TARGET_FLAG( ref="0" ) =PARENT1
+						      MSTATUS
+						      SEX
+							  EDUCATION
+							  CAR_USE
+							  CAR_TYPE
+							  REVOKED
+							  URBANICITY
+							  IMP_JOB
+							  C_HOME_VAL
+							  C_OLDCLAIM
+							  KIDSDRIV
+							  HOMEKIDS
+							  TRAVTIME
+							  TIF
+							  CLM_FREQ
+							  MVR_PTS
+							  M_INCOME
+							  M_HOME_VAL
+							  M_JOB
+							  C_BLUEBOOK
+							  IMP_YOJ
+							  M_YOJ
+							  M_AGE
+					  CAR_TYPE*C_HOMEKIDS
+					  TRAVTIME*CAR_USE
+					  /selection=stepwise;
+
+run;
+%macro score_3(INFILE,OUTFILE);
+data &OUTFILE.;
+set &INFILE.;
+YHAT=-1.6374
+	 -0.2692*(PARENT1 in("No"))
+	 -0.5095*(MSTATUS in("Yes"))
+	 +0.0276*(EDUCATION in("<High School"))
+	 -0.4650*(EDUCATION in("Bachelors"))
+	 -0.4031*(EDUCATION in("Masters"))
+	 -0.4112*(EDUCATION in("PhD"))
+	 +1.2521*(CAR_USE in("Commercial"))
+	 -0.7708*(CAR_TYPE in("Minivan"))
+	 -0.2577*(CAR_TYPE in("Panel Truck"))
+	 -0.3136*(CAR_TYPE in("Pickup"))
+	 +0.2190*(CAR_TYPE in("Sports Car"))
+	 -0.1304*(CAR_TYPE in("Van"))
+	 -0.9741*(REVOKED in("No"))
+	 +2.3565*(URBANICITY in("Highly Urban/Urban"))
+	 +0.1772*(IMP_JOB in("Clerical"))
+	 -0.8321*(IMP_JOB in("Doctor"))
+	 +0.2098*(IMP_JOB in("Home Maker"))
+	 -0.2479*(IMP_JOB in("Lawyer"))
+	 -0.9085*(IMP_JOB in("Manager"))
+	 -0.1785*(IMP_JOB in("Professional"))
+	 +0.0433*(IMP_JOB in("Student"))
+	 -0.3453*(C_HOME_VAL in("Homeowner"))
+	 +0.5388*(C_OLDCLAIM in("Less than 20000"))
+	 -0.1174*(C_OLDCLAIM in("More than 20000"))
+	 +0.3637*KIDSDRIV
+	 +0.0205*TRAVTIME
+	 -0.0550*TIF
+	 +0.0987*MVR_PTS
+	 +0.4619*M_JOB
+	 -0.00003*C_BLUEBOOK
+	 +0.1713*(CAR_TYPE in("Minivan"))*(C_HOMEKIDS in("Less than 3"))
+	 +0.3412*(CAR_TYPE in("Minivan"))*(C_HOMEKIDS in("More than 4"))
+	 +0.5962*(CAR_TYPE in("Panel Truck"))*(C_HOMEKIDS in("Less than 3"))
+	 +0.7353*(CAR_TYPE in("Panel Truck"))*(C_HOMEKIDS in("More than 4"))
+	 +0.4761*(CAR_TYPE in("Pickup"))*(C_HOMEKIDS in("Less than 3"))
+	 +0.0052*(CAR_TYPE in("Pickup"))*(C_HOMEKIDS in("More than 4"))
+	 +0.1319*(CAR_TYPE in("Sports Car"))*(C_HOMEKIDS in("Less than 3"))
+	 -0.0937*(CAR_TYPE in("Sports Car"))*(C_HOMEKIDS in("More than 4"))
+	 +0.2850*(CAR_TYPE in("Van"))*(C_HOMEKIDS in("Less than 3"))
+	 -0.4840*(CAR_TYPE in("Van"))*(C_HOMEKIDS in("More than 4"))
+	 -0.0143*TRAVTIME*(CAR_USE in("Commercial")); 
+	
+if YHAT > 999  then YHAT = 999;
+if YHAT < -999 then YHAT = -999;
+P_TARGET_FLAG = exp( YHAT ) / ( 1+exp( YHAT ));
+run;
+%mend;
+%score_3(test_1,test_score);
+data test_score;
+set test_score;
+if P_TARGET_FLAG<=0.15 then test_response=0;
+else test_response=1;
+if test_response=. then delete;
+if valid_response=. then delete;
+Length ops_validation $7.;
+pred_diff=test_response-valid_response;
+if pred_diff=0 then ops_validation='Good';
+else ops_validation='Bad';
+run;
+proc freq data=test_score;
+tables ops_validation/plots=freqplot;
+run;
+
+
+*****************************************************************
+*****************************************************************
+MODEL FOR PAYOUT
+*****************************************************************
+*****************************************************************;
+data payout;
+set &TRANS_1.;
+where TARGET_AMT>0;
+run;
+proc corr data=payout best=5;
+var _numeric_;
+with TARGET_AMT;
+run;
+proc freq data=payout;
+table _character_ ;
+run;
+***************************************************************
+Create dummy variables for categorical variables
+***************************************************************;
+%macro categorical(INFILE,OUTFILE);
+data &OUTFILE.;
+set &INFILE.;
+if PARENT1="Yes" then c_PARENT1=1;
+else c_PARENT1=0;
+if MSTATUS="Yes" then c_MSTATUS=1;
+else c_MSTATUS=0;
+if SEX="M" then c_SEX=1;
+else c_SEX=0;
+if EDUCATION in ('<High School' 'Bachelors' 'Masters' 'PhD' 'z_High School') then do;
+Less_high_school=(Education='<High School');
+Bachelors=(Education='Bachelors');
+Masters=(Education='Masters');
+Phd=(Education='PhD');
+High_school=(Education='z_High School');
+end;
+if CAR_TYPE in ('Sports Car'
+				'Minivan'
+				'z_SUV'
+				'Panel Truck'
+				'Pickup'
+				'Van') then do;
+	sports_car=(car_type='Sports Car');
+	minivan=(car_type='Minivan');
+	suv=(car_type='z_SUV');
+	panel_truck=(car_type='Panel Truck');
+	pickup=(car_type='Pickup');
+	van=(car_type='Van');
+end;
+if IMP_JOB in ('Clerical',
+			'Doctor',
+			'Home Maker',
+			'Lawyer',
+			'Manager',
+			'Professional',
+			'Student',
+			'z_Blue Collar') then do;
+		Clerical=(IMP_JOB='Clerical');
+		Doctor=(IMP_JOB='Doctor');
+		Homemaker=(IMP_JOB='Home Maker');
+		Lawyer=(IMP_JOB='Lawyer');
+		Manager=(IMP_JOB='Manager');
+		Professional=(IMP_JOB='Professional');
+		Student=(IMP_JOB='Student');
+		Blue_Collar=(IMP_JOB='z_Blue Collar');
+		
+end;
+if car_use="Commercial" then c_CAR_USE=1;
+else c_CAR_USE=0;
+if REVOKED="Yes" then c_REVOKED=1;
+else c_REVOKED=0;
+if URBANICITY="Highly Urban/ Urban" then c_URBANICITY=1;
+else c_URBANICITY=0;
+if C_HOME_VAL="Renter" then C_HOME_VAL=1;
+else C_HOME_VAL=0;
+if C_HOMEKIDS in ('Less th',
+				  'More th',
+				  'No Kids')then do;
+	less_than_3=(C_HOMEKIDS='Less th');
+	more_than_4=(C_HOMEKIDS='More th');
+	no_kids=(C_HOMEKIDS='No Kids');
+end;
+if C_OLDCLAIM in('Less tha',
+				 'More tha',
+				 'No Claim') then do;
+	less_than_20K=(C_OLDCLAIM='Less tha');
+	more_than_20K=(C_OLDCLAIM='More tha');
+	no_claim=(C_OLDCLAIM='No Claim');
+end;
+run;
+%mend;
+%categorical(payout, payout);
+proc corr data=payout best=10;
+var _numeric_;
+with TARGET_AMT;
+run;
+proc means data=payout;
+var _numeric_;
+run;
+ 
+proc reg data=payout;
+model TARGET_AMT=C_BLUEBOOK
+				c_SEX
+				c_CAR_USE
+				M_JOB
+				sports_car
+				minivan
+				suv
+				panel_truck
+				pickup
+				van
+				Clerical
+				Doctor
+				Homemaker
+				Lawyer
+				Manager
+				Professional
+				Student
+				Blue_Collar;
+run; quit;
+
+%macro score_amt(infile, outfile);
+data &OUTFILE.;
+set &INFILE.;
+P_TARGET_PAYOUT=+2985.18521
+			+0.13133*C_BLUEBOOK
+			+1220.93315*c_SEX
+			+237.30963*c_CAR_USE
+			+926.92421*M_JOB
+			+973.94993*sports_car
+			-88.72661*minivan
+			+735.25071*suv
+			-501.58801*panel_truck
+			-127.21323*pickup
+			+0.00*van
+			-30.31564*Clerical
+			-1328.91692*Doctor
+			-204.47560*Homemaker
+			+43.85129*Lawyer
+			-885.36769*Manager
+			+496.08364*Professional
+			-352.15610*Student
+			+0.00*Blue_Collar;
+if P_TARGET_PAYOUT<0 then P_TARGET_PAYOUT=0;
+run;
+%mend;
+%score_amt(payout,new_score);
+proc print data=new_score (obs=5);
+run;
+
+****************************************************************;
+%let TESTFILE= &LIB.logit_insurance_test;
+%let TEMP_TESTFILE 	= test_set;
+data &TEMP_TESTFILE.;
+set &TESTFILE.;
+proc means data=&TEMP_TESTFILE. n nmiss mean std median maxdec=3;
+run;
+%impute(&TEMP_TESTFILE.,&TEMP_TESTFILE.);
+%trans_1(&TEMP_TESTFILE.,&TEMP_TESTFILE.);
+proc means data=&TEMP_TESTFILE. n nmiss mean std median maxdec=3;
+run;
+%score_3(test_set, newscore);
+proc print data=newscore (obs=5);
+run;
+
+proc export data=newscore(KEEP=index p_target_flag)outfile='/folders/myfolders/Unit002/final.csv' DBMS=csv replace;
+run;
+*******************************************************************;
+%categorical(newscore,newscore);
+%score_amt(newscore, newscore_1);
+
+data newscore_1;
+set newscore_1;
+P_TARGET_AMT=P_TARGET_FLAG*P_TARGET_PAYOUT;
+run;
+
+proc export data=newscore_1(KEEP=index p_target_amt)outfile='/folders/myfolders/Unit002/FINAL_PAYOUT.csv' DBMS=csv replace;
+run;
+proc export data=newscore_1(KEEP=index p_target_flag p_target_amt)outfile='/folders/myfolders/Unit002/Oyumaa_Kennedy_assignment_score_2_submission.csv' DBMS=csv replace;
+run;
