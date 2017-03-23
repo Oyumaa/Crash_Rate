@@ -1,2 +1,2 @@
-# Crash_Rate
+# Crush_Rate
 Predict probability of car crash
