@@ -1,0 +1,214 @@
+require(moments)
+require(stats)
+require(ggplot2)
+library(party)
+library(MASS)
+library(car)
+insurance<-read.csv("C:/MSPA/411_GLM/Project/Unit 002/logit_insurance.csv",header=TRUE,sep=",")
+str(insurance)
+summary(insurance)
+insurance$INCOME<-as.numeric(gsub('[$,]', '',insurance$INCOME))
+insurance$HOME_VAL<-as.numeric(gsub('[$,]', '',insurance$HOME_VAL))
+insurance$BLUEBOOK<-as.numeric(gsub('[$,]', '',insurance$BLUEBOOK))
+insurance$OLDCLAIM<-as.numeric(gsub('[$,]', '',insurance$OLDCLAIM))
+#******************************************************************
+#Impute missing values with forest
+#******************************************************************
+#library(doParallel)
+#registerDoParallel(core=4)
+#library(missForest)
+#insurance.imputed<-missForest(insurance[,2:26],maxiter=5, ntree = 50, variablewise = TRUE,mtry=5,parallelize = "forests")
+library("VIM")
+aggr(insurance, prop=FALSE, numbers=TRUE)
+boxplot(TARGET_WINS,data=set_without_MV,
+        main="BOX PLOT of Target wins by segment",
+        ylab="Target wins",
+        xlab="segment",
+        col=c("red","blue","purple"))
+hist(TARGET_WINS,
+     breaks=6,
+     xlab="Target wins",
+     main="HISTOGRAM of Target wins with 6 bins",
+     col="blue")
+EDUC_JOB<- addmargins(table(insurance$EDUCATION,insurance$JOB))
+EDUC_JOB
+plot(i.insurance[,3:10])
+imp<-insurance$JOB=="" & insurance$EDUCATION=="Masters"
+insurance$JOB[imp]="Lawyer"
+imp_1<-insurance$JOB=="" & insurance$EDUCATION=="PhD"
+insurance$JOB[imp_1]="Doctor"
+
+sapply(insurance, function(x) sum(is.na(x)))
+library(mice)
+imputed<-mice(insurance,m=5,meth='pmm',seed=500)
+i.insurance<-complete(imputed,1)
+summary(i.insurance)
+par(mfrow=c(1,1))
+ggplot(data = i.insurance, aes(x = INCOME, y = HOME_VAL))+
+  geom_point(aes(color = INCOME),size = 4) + ggtitle("Plot of HOME_VAL and INCOME")
+par(mfrow = c(1,1))
+ggplot(data = i.insurance,
+       aes(x = AGE,
+           y = HOMEKIDS))+ geom_point(aes(color = TARGET_FLAG),
+                                   size = 2) + ggtitle("ScatterPlot of HOMEKIDS and AGE by TARGET_FLAG")
+ggplot(data = i.insurance,
+       aes(x =INCOME,
+           y = BLUEBOOK))+ geom_point(aes(color = TARGET_FLAG),
+                                      size = 2) + ggtitle("ScatterPlot of BLUEBOOK and INCOME by TARGET_FLAG")
+ggplot(data = i.insurance,
+       aes(x =INCOME,
+           y = HOME_VAL))+ geom_point(aes(color = TARGET_FLAG),
+                                      size = 2) + ggtitle("ScatterPlot of INCOME and HOME VALUE by TARGET_FLAG")
+ggplot(data = i.insurance,
+       aes(x =INCOME,
+           y = CAR_AGE))+ geom_point(aes(color = TARGET_FLAG),
+                                      size = 2) + ggtitle("ScatterPlot of INCOME and CAR_AGE by TARGET_FLAG")
+
+par(mfrow=c(1,1))
+boxplot(INCOME~EDUCATION,data=i.insurance,
+        main="BOX PLOT of INCOME by EDUCATION",
+        ylab="INCOME",
+        xlab="EDUCATION",
+        border=c("red","blue","green","yellow","orange","purple"))
+boxplot(INCOME~JOB,data=i.insurance,
+        main="BOX PLOT of INCOME by JOB",
+        ylab="INCOME",
+        xlab="JOB",
+        border=c("red","blue","green","yellow","orange","purple"))
+boxplot(OLDCLAIM~CAR_TYPE,data=i.insurance,
+       main="BOX PLOT of CAR VALUE by CAR_TYPE",
+       ylab="BLUEBOOK",
+       xlab="CAR_TYPE",
+       border=c("red","blue","green","yellow","orange","purple"))
+boxplot(BLUEBOOK~CAR_USE,data=i.insurance,
+        main="BOX PLOT of CAR VALUE by CAR_USE",
+        ylab="BLUEBOOK",
+        xlab="CAR_USE",
+        border=c("red","blue","green","yellow","orange","purple"))
+boxplot(AGE~HOMEKIDS,data=i.insurance,
+        main="BOX PLOT of HOMEKIDS and AGE",
+        ylab="AGE",
+        xlab="HOMEKIDS",
+        border=c("red","blue","green","yellow","orange","purple"))
+boxplot(OLDCLAIM~CLM_FREQ,data=i.insurance,
+        main="BOX PLOT of CLM_FREQ and OLDCLAIM",
+        ylab="OLDCLAIM",
+        xlab="CLM_FREQ",
+        border=c("red","blue","green","yellow","orange","purple"))
+
+boxplot(CAR_AGE~INCOME,data=i.insurance,
+        main="BOX PLOT of CAR_AGE and INCOME",
+        ylab="CAR_AGE",
+        xlab="INCOME",
+        border=c("red","blue","green","yellow","orange","purple"))
+
+drop_var<-c("TARGET_AMOUNT","INDEX")
+select_set<-i.insurance[,!(names(i.insurance)%in%drop_var)]
+# variable selection *************************************************************************************
+library(Boruta)
+bor.set<-Boruta(TARGET_FLAG~.,data=select_set,doTrace=2)
+final.selection<-TentativeRoughFix(bor.set)
+print(final.selection)
+# RED_CAR is unimportant.
+# create new categorical variables
+#*************************************************************************
+#correlation
+#************************************************************************
+x<-i.insurance[,c("TARGET_FLAG")]
+y<-i.insurance[,c("KIDSDRIV",
+                 "AGE",
+                 "HOMEKIDS",
+                 "YOJ",
+                 "INCOME",
+                 "HOME_VAL",
+                 "TRAVTIME",
+                 "BLUEBOOK",
+                 "TIF")]
+cor(x,y)
+x1<-i.insurance[,c("KIDSDRIV",
+                 "AGE",
+                 "HOMEKIDS",
+                 "YOJ",
+                 "INCOME",
+                 "HOME_VAL",
+                 "TRAVTIME",
+                 "BLUEBOOK",
+                 "TIF")]
+cor(x1,y)
+
+#*********************************************************************
+# convert continuous variable to categorical variables
+#*********************************************************************
+imp<-i.insurance$HOME_VAL==0
+i.insurance$C_HOME_VAL[imp]="Renter"
+imp<-i.insurance$HOME_VAL!=0
+i.insurance$C_HOME_VAL[imp]="Homeowner"
+imp_1<-i.insurance$OLDCLAIM==0
+i.insurance$C_OLDCLAIM[imp_1]="No Claim"
+imp_1<-i.insurance$OLDCLAIM>0&i.insurance$OLDCLAIM<20000
+i.insurance$C_OLDCLAIM[imp_1]="Less than 20K"
+imp_1<-i.insurance$OLDCLAIM>20000
+i.insurance$C_OLDCLAIM[imp_1]="More than 20K"
+imp_2<-i.insurance$HOMEKIDS==0
+i.insurance$C_HOMEKIDS[imp_2]="No Kids"
+imp_2<-i.insurance$HOMEKIDS>0&i.insurance$HOMEKIDS<=3
+i.insurance$C_HOMEKIDS[imp_2]="Less than 4"
+imp_2<-i.insurance$HOMEKIDS>=4
+i.insurance$C_HOMEKIDS[imp_2]="More than 4"
+i.insurance$C_HOMEKIDS<-as.factor(i.insurance$C_HOMEKIDS)
+i.insurance$C_OLDCLAIM<-as.factor(i.insurance$C_OLDCLAIM)
+i.insurance$C_HOME_VAL<-as.factor(i.insurance$C_HOME_VAL)
+#*********************************************************************
+#CAP Continuous variables
+#********************************************************************
+INC_CAP<-quantile(i.insurance$INCOME,c(.95))
+BLU_CAP<-quantile(i.insurance$BLUEBOOK,c(.95))
+AGE_CAP<-quantile(i.insurance$AGE,c(.95))
+cap_INC<-i.insurance$INCOME>INC_CAP[[1]]
+i.insurance$INCOME[cap_INC]<-INC_CAP[[1]]
+cap_BLU<-i.insurance$BLUEBOOK>BLU_CAP[[1]]
+i.insurance$BLUEBOOK[cap_BLU]<-BLU_CAP[[1]]
+cap_AGE<-i.insurance$AGE>AGE_CAP[[1]]
+i.insurance$AGE[cap_AGE]<-AGE_CAP[[1]]
+str(i.insurance)
+
+drop_var<-c("TARGET_AMOUNT","INDEX","HOME_VAL","OLDCLAIM","HOMEKIDS")
+select_set<-i.insurance[,!(names(i.insurance)%in%drop_var)]
+glm.out = glm(TARGET_FLAG ~., family=binomial(logit), data=i.insurance)
+summary(glm.out)
+#***********************************************************************
+#test set
+#***********************************************************************
+test<-read.csv("C:/MSPA/411_GLM/Project/Unit 002/logit_insurance_test.csv",header=TRUE,sep=",")
+summary(test)
+test$INCOME<-as.numeric(gsub('[$,]', '',test$INCOME))
+test$HOME_VAL<-as.numeric(gsub('[$,]', '',test$HOME_VAL))
+test$BLUEBOOK<-as.numeric(gsub('[$,]', '',test$BLUEBOOK))
+test$OLDCLAIM<-as.numeric(gsub('[$,]', '',test$OLDCLAIM))
+str(test)
+aggr(test, prop=FALSE, numbers=TRUE)
+imputed<-mice(test,m=5,meth='pmm',seed=500)
+i.test<-complete(imputed,1)
+
+imp<-i.test$HOME_VAL==0
+i.test$C_HOME_VAL[imp]="Renter"
+imp<-i.test$HOME_VAL!=0
+i.test$C_HOME_VAL[imp]="Homeowner"
+imp_1<-i.test$OLDCLAIM==0
+i.test$C_OLDCLAIM[imp_1]="No Claim"
+imp_1<-i.test$OLDCLAIM>0&i.test$OLDCLAIM<20000
+i.test$C_OLDCLAIM[imp_1]="Less than 20K"
+imp_1<-i.test$OLDCLAIM>20000
+i.test$C_OLDCLAIM[imp_1]="More than 20K"
+imp_2<-i.test$HOMEKIDS==0
+i.test$C_HOMEKIDS[imp_2]="No Kids"
+imp_2<-i.test$HOMEKIDS>0&i.test$HOMEKIDS<=3
+i.test$C_HOMEKIDS[imp_2]="Less than 4"
+imp_2<-i.test$HOMEKIDS>=4
+i.test$C_HOMEKIDS[imp_2]="More than 4"
+i.test$C_HOMEKIDS<-as.factor(i.test$C_HOMEKIDS)
+i.test$C_OLDCLAIM<-as.factor(i.test$C_OLDCLAIM)
+i.test$C_HOME_VAL<-as.factor(i.test$C_HOME_VAL)
+summary(i.test)
+str(i.test)
+predict(glm.out,newdata=i.test, type="response")
